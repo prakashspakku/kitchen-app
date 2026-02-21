@@ -132,7 +132,7 @@ jobs:
       - name: Configure kubectl
         run: |
           mkdir -p ~/.kube
-          echo '${{ secrets.KUBECONFIG }}' | base64 --decode > ~/.kube/config
+          echo "${{ secrets.KUBECONFIG_DATA }}" > ~/.kube/config
           chmod 600 ~/.kube/config
 
       - name: Verify cluster connection
@@ -143,7 +143,7 @@ jobs:
           kubectl create secret generic mongodb-secret \
             --from-literal=mongo-root-username=admin \
             --from-literal=mongo-root-password='${{ secrets.MONGO_ROOT_PASSWORD }}' \
-            --from-literal=mongo-uri="mongodb://admin:${{ secrets.MONGO_ROOT_PASSWORD }}@mongodb-service:27017" \
+            --from-literal=mongo-uri="mongodb://admin:${{ secrets.MONGO_ROOT_PASSWORD }}@mongodb-service:27017/kitchendb" \
             -n kitchen-app --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy Kubernetes manifests
