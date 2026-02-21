@@ -128,35 +128,34 @@ jobs:
         uses: azure/setup-kubectl@v3
         with:
           version: 'v1.28.3'
-      
-      - name: Allow PowerShell scripts 
-        run: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force 
-        shell: pwsh
+
+      - name: Allow PowerShell scripts
+        run: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
+        shell: powershell
 
       - name: Configure kubectl
         run: |
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_DATA }}" > ~/.kube/config
           chmod 600 ~/.kube/config
+        shell: powershell
 
       - name: Verify cluster connection
         run: kubectl get nodes
+        shell: powershell
 
       - name: Apply/update MongoDB secret
         run: |
-          kubectl create secret generic mongodb-secret \
-            --from-literal=mongo-root-username=admin \
-            --from-literal=mongo-root-password='${{ secrets.MONGO_ROOT_PASSWORD }}' \
-            --from-literal=mongo-uri="mongodb://admin:${{ secrets.MONGO_ROOT_PASSWORD }}@mongodb-service:27017/kitchendb" \
-            -n kitchen-app --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic mongodb-secret `
+            --from-literal=mongo-root-username=admin `
+            --from-literal=mongo-root-password='${{ secrets.MONGO_ROOT_PASSWORD }}' `
+            --from-literal=mongo-uri="mongodb://admin:${{ secrets.MONGO_ROOT_PASSWORD }}"
+        shell: powershell
 
       - name: Deploy Kubernetes manifests
-        run: |
-          kubectl apply -f k8s/statefulset.yaml -n kitchen-app
-          kubectl apply -f k8s/services.yaml -n kitchen-app
-          kubectl apply -f k8s/kitchen-api-deployment.yaml -n kitchen-app
+        run: kubectl apply -f k8s/
+        shell: powershell
 
       - name: Verify deployments
-        run: |
-          kubectl get pods -n kitchen-app
-          kubectl get svc -n kitchen-app
+        run: kubectl get pods -n default
+        shell: powershell
