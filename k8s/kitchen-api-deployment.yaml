@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kitchen-api-deployment
+  namespace: kitchen-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kitchen-api
+  template:
+    metadata:
+      labels:
+        app: kitchen-api
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: minikube
+      containers:
+        - name: kitchen-api
+          image: pakku28/kitchen-api:latest   # CI/CD will push new images here
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 3000
+          env:
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secret
+                  key: mongo-uri
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kitchen-api-service
+  namespace: kitchen-app
+spec:
+  type: NodePort
+  selector:
+    app: kitchen-api
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30081

@@ -15,10 +15,10 @@ env:
   API_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/kitchen-api
   WEB_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/kitchen-web
 
-# ────────────────────────────────────────────────────────────────
-# JOB 1: Matrix Test — runs SIMULTANEOUSLY on Node 18 AND Node 20
-# ────────────────────────────────────────────────────────────────
 jobs:
+  # ────────────────────────────────────────────────────────────────
+  # JOB 1: Matrix Test — runs SIMULTANEOUSLY on Node 18 AND Node 20
+  # ────────────────────────────────────────────────────────────────
   matrix-test:
     name: Test (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
@@ -61,9 +61,9 @@ jobs:
           path: api/coverage/
           retention-days: 7
 
-# ────────────────────────────────────────────────────────────────
-# JOB 2: Build Docker images and push to Docker Hub
-# ────────────────────────────────────────────────────────────────
+  # ────────────────────────────────────────────────────────────────
+  # JOB 2: Build Docker images and push to Docker Hub
+  # ────────────────────────────────────────────────────────────────
   build-push:
     name: Build and Push Images
     needs: matrix-test
@@ -112,9 +112,9 @@ jobs:
     outputs:
       image-tag: ${{ steps.tag.outputs.value }}
 
-# ────────────────────────────────────────────────────────────────
-# JOB 3: Deploy to Kubernetes — PAUSES for manual approval
-# ────────────────────────────────────────────────────────────────
+  # ────────────────────────────────────────────────────────────────
+  # JOB 3: Deploy to Kubernetes — PAUSES for manual approval
+  # ────────────────────────────────────────────────────────────────
   deploy:
     name: Deploy to Production
     needs: build-push
