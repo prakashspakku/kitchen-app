@@ -135,10 +135,11 @@ jobs:
 
       - name: Configure kubectl
         run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_DATA }}" > ~/.kube/config
-          chmod 600 ~/.kube/config
+          New-Item -ItemType Directory -Force -Path $env:USERPROFILE\.kube
+          Set-Content -Path "$env:USERPROFILE\.kube\config" -Value "${{ secrets.KUBECONFIG_DATA }}"
+          icacls "$env:USERPROFILE\.kube\config" /inheritance:r /grant:r "$($env:USERNAME):(R)"
         shell: powershell
+
 
       - name: Verify cluster connection
         run: kubectl get nodes
