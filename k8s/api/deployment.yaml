@@ -1,0 +1,83 @@
+# ConfigMap: non-secret environment variables
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  namespace: kitchen-app
+data:
+  PORT: '3000'
+  NODE_ENV: 'production'
+  APP_VERSION: '1.0.0'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-deployment
+  namespace: kitchen-app
+  labels: {app: kitchen-api}
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1          # Allow 1 extra Pod during update
+      maxUnavailable: 0    # Never remove a Pod before a new one is Ready
+  selector:
+    matchLabels: {app: kitchen-api}
+  template:
+    metadata:
+      labels: {app: kitchen-api}
+      annotations:
+        prometheus.io/scrape: 'true'     # Prometheus discovers and scrapes this Pod
+        prometheus.io/port: '3000'
+        prometheus.io/path: '/metrics'
+    spec:
+      containers:
+        - name: kitchen-api
+          image: pakku28/kitchen-api:latest
+          imagePullPolicy: Always
+          ports: [{containerPort: 3000}]
+          envFrom:
+            - configMapRef: {name: api-config}    # Load all non-secret vars
+          env:
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef: {name: mongodb-secret, key: mongo-uri}
+          livenessProbe:                          # Is the app alive?
+            httpGet: {path: /health, port: 3000}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:                         # Is the app ready for traffic?
+            httpGet: {path: /ready, port: 3000}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 2
+          resources:
+            requests: {memory: '128Mi', cpu: '100m'}
+            limits:   {memory: '256Mi', cpu: '500m'}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+---
+# Internal ClusterIP Service (Pod-to-Pod communication)
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+  namespace: kitchen-app
+spec:
+  type: ClusterIP
+  selector: {app: kitchen-api}
+  ports: [{port: 3000, targetPort: 3000}]
+---
+# NodePort Service (external browser access in Minikube)
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-nodeport
+  namespace: kitchen-app
+spec:
+  type: NodePort
+  selector: {app: kitchen-api}
+  ports: [{port: 3000, targetPort: 3000, nodePort: 30000}]

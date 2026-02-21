@@ -1,0 +1,158 @@
+name: Kitchen CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:               # Manual trigger button on GitHub UI
+
+concurrency:                       # Cancel in-progress run when new commit arrives
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  API_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/kitchen-api
+  WEB_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/kitchen-web
+
+# ────────────────────────────────────────────────────────────────
+# JOB 1: Matrix Test — runs SIMULTANEOUSLY on Node 18 AND Node 20
+# ────────────────────────────────────────────────────────────────
+jobs:
+  matrix-test:
+    name: Test (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ['18', '20']
+      fail-fast: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: api/package-lock.json
+
+      - name: Install dependencies
+        working-directory: api
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: api
+        run: npm run lint
+
+      - name: Run Jest tests with coverage
+        working-directory: api
+        run: npm test
+        env:
+          NODE_ENV: test
+          CI: 'true'
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-node-${{ matrix.node-version }}
+          path: api/coverage/
+          retention-days: 7
+
+# ────────────────────────────────────────────────────────────────
+# JOB 2: Build Docker images and push to Docker Hub
+# ────────────────────────────────────────────────────────────────
+  build-push:
+    name: Build and Push Images
+    needs: matrix-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate image tag from commit SHA
+        id: tag
+        run: echo "value=sha-${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./api
+          target: production
+          push: true
+          tags: |
+            ${{ env.API_IMAGE }}:${{ steps.tag.outputs.value }}
+            ${{ env.API_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Web UI image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./web-ui
+          push: true
+          tags: |
+            ${{ env.WEB_IMAGE }}:${{ steps.tag.outputs.value }}
+            ${{ env.WEB_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+    outputs:
+      image-tag: ${{ steps.tag.outputs.value }}
+
+# ────────────────────────────────────────────────────────────────
+# JOB 3: Deploy to Kubernetes — PAUSES for manual approval
+# ────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Production
+    needs: build-push
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.3'
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo '${{ secrets.KUBECONFIG }}' | base64 --decode > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Verify cluster connection
+        run: kubectl get nodes
+
+      - name: Apply/update MongoDB secret
+        run: |
+          kubectl create secret generic mongodb-secret \
+            --from-literal=mongo-root-username=admin \
+            --from-literal=mongo-root-password='${{ secrets.MONGO_ROOT_PASSWORD }}' \
+            --from-literal=mongo-uri="mongodb://admin:${{ secrets.MONGO_ROOT_PASSWORD }}@mongodb-service:27017" \
+            -n kitchen-app --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy Kubernetes manifests
+        run: |
+          kubectl apply -f k8s/statefulset.yaml -n kitchen-app
+          kubectl apply -f k8s/services.yaml -n kitchen-app
+          kubectl apply -f k8s/kitchen-api-deployment.yaml -n kitchen-app
+
+      - name: Verify deployments
+        run: |
+          kubectl get pods -n kitchen-app
+          kubectl get svc -n kitchen-app

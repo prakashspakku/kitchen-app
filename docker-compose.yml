@@ -1,0 +1,71 @@
+version: '3.9'
+ 
+services:
+ 
+  # ── Walk-In Fridge (MongoDB) ──────────────────────────────────────
+  db:
+    image: mongo:7.0
+    container_name: kitchen-db
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: Secret123!
+      MONGO_INITDB_DATABASE: kitchendb
+    volumes:
+      - mongo-data:/data/db               # Persist MongoDB data
+      - ./db/init:/docker-entrypoint-initdb.d:ro  # Run init script once
+    networks: [kitchen-net]
+    ports: ['27017:27017']
+    healthcheck:
+      test: ['CMD','mongosh','--quiet','--eval','db.adminCommand("ping").ok']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+ 
+  # ── Hot Kitchen (Node.js API) ─────────────────────────────────────
+  api:
+    build:
+      context: ./api
+      target: production                  # Use the production stage
+    image: kitchen-api:local
+    container_name: kitchen-api
+    restart: unless-stopped
+    environment:
+      MONGO_URI: 'mongodb://admin:Secret123!@db:27017/kitchendb?authSource=admin'
+      PORT: '3000'
+      NODE_ENV: development
+    ports: ['3000:3000']
+    depends_on:
+      db:
+        condition: service_healthy        # ONLY start when MongoDB is healthy
+    networks: [kitchen-net]
+    healthcheck:
+      test: ['CMD','node','-e',"require('http').get('http://localhost:3000/health',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+ 
+  # ── Front Counter (NGINX Web UI) ──────────────────────────────────
+  web-ui:
+    build:
+      context: ./web-ui
+    image: kitchen-web:local
+    container_name: kitchen-web
+    restart: unless-stopped
+    ports: ['8080:80']
+    depends_on:
+      api:
+        condition: service_healthy        # ONLY start when API is healthy
+    networks: [kitchen-net]
+ 
+networks:
+  kitchen-net:
+    driver: bridge
+    name: kitchen-network
+ 
+volumes:
+  mongo-data:
+    driver: local
+    name: kitchen-mongo-data

@@ -1,0 +1,15 @@
+{
+  "name": "kitchen-app",
+  "version": "1.0.0",
+  "description": "3-Tier Cloud Native Microservice — Professional Kitchen Demo",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}

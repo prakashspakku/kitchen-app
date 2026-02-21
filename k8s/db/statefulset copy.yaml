@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+  namespace: kitchen-app
+spec:
+  serviceName: 'mongodb-service'     # Must match the headless Service below
+  replicas: 1
+  selector:
+    matchLabels: {app: mongodb}
+  template:
+    metadata:
+      labels: {app: mongodb}
+    spec:
+      containers:
+        - name: mongodb
+          image: mongo:7.0
+          ports: [{containerPort: 27017}]
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secret
+                  key: mongo-root-username
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secret
+                  key: mongo-root-password
+          volumeMounts:
+            - name: mongo-storage
+              mountPath: /data/db
+          readinessProbe:
+            exec:
+              command: ['mongosh','--quiet','--eval','db.adminCommand("ping").ok']
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests: {memory: '256Mi', cpu: '250m'}
+            limits:   {memory: '512Mi', cpu: '500m'}
+  volumeClaimTemplates:              # Auto-creates a PVC per replica
+    - metadata:
+        name: mongo-storage
+      spec:
+        accessModes: ['ReadWriteOnce']
+        storageClassName: standard
+        resources:
+          requests:
+            storage: 2Gi
+---
+# Headless Service — gives mongodb-0 a stable DNS address
+# clusterIP: None means no load balancing — direct Pod addressing
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-service
+  namespace: kitchen-app
+spec:
+  clusterIP: None                    # Headless — required for StatefulSet DNS
+  selector: {app: mongodb}
+  ports: [{port: 27017, targetPort: 27017}]
