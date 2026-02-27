@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kitchen Orders</title>
+</head>
+<body>
+  <h1>Kitchen Orders</h1>
+  <p>Create orders and track status changes automatically.</p>
+  <input id="dish" placeholder="Dish name (e.g. Masala Dosa)" autocomplete="off" />
+  <button id="createBtn">Create order</button>
+  <button id="refreshBtn">Refresh</button>
+  <pre id="ordersOut">Loading...</pre>
+  <script>
+    const apiBase = '/api';
+    const out = document.getElementById('ordersOut');
+    async function refreshOrders() {
+      const r = await fetch(apiBase + '/orders');
+      const data = await r.json().catch(() => []);
+      out.textContent = JSON.stringify(data, null, 2);
+    }
+    async function createOrder() {
+      const dish = document.getElementById('dish').value.trim();
+      if (!dish) return;
+      await fetch(apiBase + '/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dish })
+      });
+      document.getElementById('dish').value = '';
+      await refreshOrders();
+    }
+    document.getElementById('createBtn').addEventListener('click', createOrder);
+    document.getElementById('refreshBtn').addEventListener('click', refreshOrders);
+    refreshOrders();
+    setInterval(refreshOrders, 5000);
+  </script>
+</body>
+</html>
